@@ -1,0 +1,78 @@
+// INTEL CORPORATION CONFIDENTIAL AND PROPRIETARY
+//
+// Copyright © 2022-2023 Intel Corporation.
+//
+// This software and the related documents are Intel copyrighted
+// materials, and your use of them is governed by the express
+// license under which they were provided to you (License). Unless
+// the License provides otherwise, you may not use, modify, copy,
+// publish, distribute, disclose or transmit  this software or the
+// related documents without Intel's prior written permission.
+//
+// This software and the related documents are provided as is, with
+// no express or implied warranties, other than those that are
+// expressly stated in the License.
+
+// Sigma Delta neuron model
+// Does not implement cumulative errors
+// Uses ReLU activation
+
+// The model:
+// sigma = sigma + da
+// act = ReLU(sigma + bias)
+// delta = act - act_old + residue_old
+// if abs(delta) >= scale:
+//     payload = delta >> scale_exp
+//     residue = 0
+// else:
+//     payload = 0
+//     residue = delta
+
+// Describes how the thread is started and stopped
+.RmwCA=1
+.RmwDA=0
+.RdcDA=1
+.StrideCA=1
+.StrideDA=1
+.StrideSA=1
+.StridePA=0
+
+// Constants which must be defined and compiled into the program
+.constant:scale
+.constant:scale_exp
+.constant:bias_exp
+
+// Aliases for variables
+// t0ls has da at the start of the update pass
+// and spike payload at the end of the pass
+.var:da@t0ls        // DendAccum input
+.var:payload@t0ls   // spike payload
+.var:act@s0ls       // to store activation
+.var:abs_delta@s3ls // to store delta
+
+// Structure to be used by Python to access compartment memory
+.mem:CA[0] {
+ ls sigma;
+ ls act_ref;    // act_ref = residue - act
+ ws bias; 
+} // each CA has 64 bits
+
+:pass0
+add sigma da            // Accumulate delta input
+mov act bias            // act = bias
+shl act bias_exp        // act = bias << bias_exp
+adl_sat sigma               // act += sigma
+max act 0               // act = max(act_new, 0) = ReLU(sigma + bias)
+mul_rn 12 act scale     // multiply v by fixed-point [0,1)
+shr act scale_exp
+rmw_ca 0
+next
+
+:pass1
+neg act_ref act_ref
+add act_ref act
+mov payload act_ref     
+mov act_ref act         // act_ref = act
+cmp_eq payload 0
+skp_c 1
+spike 0                 // send spike to first axon of neuron
