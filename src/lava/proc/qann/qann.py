@@ -73,6 +73,8 @@ class QANN(AbstractProcess):
             self.scale = Var(shape=(1,), init=scale)
         elif type(scale) == np.ndarray:
             self.scale = Var(shape=shape, init=scale)
+        elif np.isscalar(scale) and np.issubdtype(type(scale), np.integer):
+            self.scale = Var(shape=(1,), init=scale)
         else:
             raise ValueError("scale must be an int or np.ndarray")
         self.sigma = Var(shape=shape, init=0)
@@ -92,6 +94,20 @@ class QANN(AbstractProcess):
 
 
 if loihi_available:
+
+    def coerce_to_shape(var, shape):
+        """Coerce a variable to a given shape. Tile over channels if necessary."""
+        if np.isscalar(var):
+            return var
+        if var.shape == shape:
+            return var
+        if np.prod(var.shape) == np.prod(shape):
+            return var.reshape(shape)
+        if len(shape) == 3:
+            if np.prod(var.shape) == shape[2]:
+                return np.tile(var.reshape(1, 1, -1), (shape[0], shape[1], 1))
+        else:
+            raise ValueError(f"Cannot coerce {var.shape} to {shape}")
 
     @implements(proc=QANN, protocol=LoihiProtocol)
     @requires(Loihi2NeuroCore)
@@ -124,31 +140,47 @@ if loihi_available:
 
             # Allocate neurons
             curr_dir = os.path.dirname(os.path.realpath(__file__))
-            ucode_file = os.path.join(curr_dir, "qann.dasm")
 
             scale_exp = self.scale_exp.var.get()
             bias_exp = self.bias_exp.var.get()
             bias = self.bias.var.get()
-            # account for bias not being the same for each channel
-            if (len(shape) == 3) and (
-                shape[2] == bias.shape[0]
-            ):  # In the case of conv
-                bias = np.tile(bias, (shape[0], shape[1], 1))
-            elif flat_shape[0] != bias.shape[0]:
-                raise ValueError(
-                    f"Shape {shape} and bias {bias} do not match. "
-                )
-            neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
-                shape=(1,),
-                ucode=ucode_file,
-                scale=self.scale.var.get(),
-                scale_exp=scale_exp,
-                bias_exp=bias_exp,
-            )
+            scale = self.scale.var.get()
+            bias = coerce_to_shape(bias, shape)
+            scale = coerce_to_shape(scale, shape)
             act_ref = self.residue.var.get() - self.act.var.get()
-            neurons: Nodes = net.neurons.allocate_ucode(
-                shape=flat_shape, sigma=self.sigma, act_ref=act_ref, bias=bias
-            )
+            if np.isscalar(
+                scale
+            ):  # Compile the scale into the code if its a scalar
+                ucode_file = os.path.join(curr_dir, "qann.dasm")
+                neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                    shape=(1,),
+                    ucode=ucode_file,
+                    scale_exp=scale_exp,
+                    bias_exp=bias_exp,
+                    scale=scale,
+                )
+                neurons: Nodes = net.neurons.allocate_ucode(
+                    shape=flat_shape,
+                    sigma=self.sigma,
+                    act_ref=act_ref,
+                    bias=bias,
+                )
+            else:
+                raise ("Channel wise scaling not implemented yet")
+                ucode_file = os.path.join(curr_dir, "qann_channel_wise.dasm")
+                neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                    shape=(1,),
+                    ucode=ucode_file,
+                    scale_exp=scale_exp,
+                    bias_exp=bias_exp,
+                )
+                neurons: Nodes = net.neurons.allocate_ucode(
+                    shape=flat_shape,
+                    sigma=self.sigma,
+                    act_ref=act_ref,
+                    bias=bias,
+                    scale=scale,
+                )
             # Allocate output axons
             ax_out: Nodes = net.ax_out.allocate(
                 shape=flat_shape, num_message_bits=num_message_bits
