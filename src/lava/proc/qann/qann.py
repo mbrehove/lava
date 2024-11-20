@@ -130,6 +130,7 @@ if loihi_available:
 
         bias_exp: NcVar = LavaNcType(NcVar, np.int32, precision=3)
         scale_exp: NcVar = LavaNcType(NcVar, np.int32, precision=3)
+        threshold: NcVar = LavaNcType(NcVar, np.int32, precision=3)
         # cum_error: NcVar = LavaNcType(NcVar, bool, precision=1)
 
         def allocate(self, net: NetL2):
@@ -148,6 +149,7 @@ if loihi_available:
             bias = coerce_to_shape(bias, shape)
             scale = coerce_to_shape(scale, shape)
             act_ref = self.residue.var.get() - self.act.var.get()
+            vth = self.threshold.var.get()
             if np.isscalar(
                 scale
             ):  # Compile the scale into the code if its a scalar
@@ -166,13 +168,14 @@ if loihi_available:
                     bias=bias,
                 )
             else:
-                raise ("Channel wise scaling not implemented yet")
-                ucode_file = os.path.join(curr_dir, "qann_channel_wise.dasm")
+                # raise ("Channel wise scaling not implemented yet")
+                ucode_file = os.path.join(curr_dir, "qann_thresh_chan.dasm")
                 neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
                     shape=(1,),
                     ucode=ucode_file,
                     scale_exp=scale_exp,
                     bias_exp=bias_exp,
+                    vth=vth,
                 )
                 neurons: Nodes = net.neurons.allocate_ucode(
                     shape=flat_shape,
@@ -180,6 +183,8 @@ if loihi_available:
                     act_ref=act_ref,
                     bias=bias,
                     scale=scale,
+                    nothing1=0,
+                    nothing2=0,
                 )
             # Allocate output axons
             ax_out: Nodes = net.ax_out.allocate(

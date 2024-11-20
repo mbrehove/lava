@@ -38,7 +38,7 @@
 .StridePA=0
 
 // Constants which must be defined and compiled into the program
-.constant:scale
+.constant:vth
 .constant:scale_exp
 .constant:bias_exp
 
@@ -53,7 +53,7 @@
 // Structure to be used by Python to access compartment memory
 .mem:CA[0] {
  ls sigma;
- ls act_ref;    // act_ref = residue - act
+ ls scale;    
  ws bias; 
 } // each CA has 64 bits
 
@@ -61,19 +61,8 @@
 add sigma da            // Accumulate delta input
 mov act bias            // act = bias
 shl act bias_exp        // act = bias << bias_exp
-adl_sat sigma               // act += sigma
+adl_sat sigma           // act += sigma
 max act 0               // act = max(act_new, 0) = ReLU(sigma + bias)
-// mul_rn 12 act scale     // multiply v by fixed-point [0,1)
-// shr act scale_exp
-mul_rn scale_exp act scale
-rmw_ca 0
-next
-
-:pass1
-neg act_ref act_ref
-add act_ref act
-mov payload act_ref     
-mov act_ref act         // act_ref = act
-cmp_eq payload 0
-skp_c 1
-spike 0                 // send spike to first axon of neuron
+mul_rn scale_exp act scale // multiply - right-shift
+mov payload act        // payload = act
+spike 0 

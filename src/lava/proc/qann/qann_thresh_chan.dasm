@@ -13,32 +13,17 @@
 // no express or implied warranties, other than those that are
 // expressly stated in the License.
 
-// Sigma Delta neuron model
-// Does not implement cumulative errors
-// Uses ReLU activation
-
-// The model:
-// sigma = sigma + da
-// act = ReLU(sigma + bias)
-// delta = act - act_old + residue_old
-// if abs(delta) >= scale:
-//     payload = delta >> scale_exp
-//     residue = 0
-// else:
-//     payload = 0
-//     residue = delta
-
 // Describes how the thread is started and stopped
 .RmwCA=1
 .RmwDA=0
 .RdcDA=1
-.StrideCA=1
+.StrideCA=2
 .StrideDA=1
 .StrideSA=1
 .StridePA=0
 
 // Constants which must be defined and compiled into the program
-.constant:scale
+.constant:vth
 .constant:scale_exp
 .constant:bias_exp
 
@@ -52,28 +37,39 @@
 
 // Structure to be used by Python to access compartment memory
 .mem:CA[0] {
- ls sigma;
- ls act_ref;    // act_ref = residue - act
+ ls scale;
+ ls sigma;    
  ws bias; 
+} // each CA has 64 bits
+
+.mem:CA[1] {
+ ls act_ref; // act_ref = residue - act_new
+ // I had to add thise in order to acctually use the variables in the second and third slots of CA[0]. Not sure why.
+ // Switching the order of sigma and scale switched which variable had the error associated with it. 
+ ls nothing1; 
+ ws nothing2;
 } // each CA has 64 bits
 
 :pass0
 add sigma da            // Accumulate delta input
 mov act bias            // act = bias
 shl act bias_exp        // act = bias << bias_exp
-adl_sat sigma               // act += sigma
+add_sat act sigma           // act += sigma
 max act 0               // act = max(act_new, 0) = ReLU(sigma + bias)
-// mul_rn 12 act scale     // multiply v by fixed-point [0,1)
-// shr act scale_exp
-mul_rn scale_exp act scale
-rmw_ca 0
+mul_rn scale_exp act scale // multiply - right-shift
+rmw_ca 1
 next
 
 :pass1
-neg act_ref act_ref
-add act_ref act
-mov payload act_ref     
+add act_ref act         // act_ref = act - act_old + residue = delta
+abs abs_delta act_ref   // abs_delta = abs(delta)
+cmp_lt abs_delta vth
+skp_nc 2
+// if !spike: residue = delta => act_ref = delta - act
+sub act_ref act         // act_ref = delta - act
+end
+// if spike: residue = 0 => act_ref = 0 - act
+mov payload act_ref     // payload = delta
 mov act_ref act         // act_ref = act
-cmp_eq payload 0
-skp_c 1
+neg act_ref act_ref     // act_ref = - act
 spike 0                 // send spike to first axon of neuron

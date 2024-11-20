@@ -11,18 +11,22 @@ from collections import OrderedDict, defaultdict
 
 import lava.magma.compiler.var_model as var_model
 import numpy as np
-from lava.magma.compiler.builders.interfaces import (AbstractChannelBuilder,
-                                                     AbstractProcessBuilder)
+from lava.magma.compiler.builders.interfaces import (
+    AbstractChannelBuilder,
+    AbstractProcessBuilder,
+)
 
 try:
     from lava.magma.compiler.builders.c_builder import CProcessBuilder
     from lava.magma.compiler.builders.nc_builder import NcProcessBuilder
     from lava.magma.compiler.subcompilers.c.cproc_compiler import CProcCompiler
-    from lava.magma.compiler.subcompilers.nc.ncproc_compiler import \
-        NcProcCompiler
+    from lava.magma.compiler.subcompilers.nc.ncproc_compiler import (
+        NcProcCompiler,
+    )
     from lava.magma.core.model.c.model import AbstractCProcessModel
     from lava.magma.core.model.nc.model import AbstractNcProcessModel
 except ImportError:
+
     class CProcessBuilder(AbstractProcessBuilder):
         pass
 
@@ -43,10 +47,14 @@ except ImportError:
     class AbstractNcProcessModel:
         pass
 
+
 from lava.magma.compiler.builders.channel_builder import (
-    RuntimeChannelBuilderMp, ServiceChannelBuilderMp)
-from lava.magma.compiler.builders.runtimeservice_builder import \
-    RuntimeServiceBuilder
+    RuntimeChannelBuilderMp,
+    ServiceChannelBuilderMp,
+)
+from lava.magma.compiler.builders.runtimeservice_builder import (
+    RuntimeServiceBuilder,
+)
 from lava.magma.compiler.channel_map import ChannelMap, Payload, PortPair
 from lava.magma.compiler.channels.interfaces import ChannelType
 from lava.magma.compiler.compiler_graphs import ProcGroup, ProcGroupDiGraphs
@@ -54,16 +62,22 @@ from lava.magma.compiler.compiler_utils import split_proc_builders_by_type
 from lava.magma.compiler.executable import Executable
 from lava.magma.compiler.mapper import Mapper
 from lava.magma.compiler.node import Node, NodeConfig
-from lava.magma.compiler.subcompilers.channel_builders_factory import \
-    ChannelBuildersFactory
+from lava.magma.compiler.subcompilers.channel_builders_factory import (
+    ChannelBuildersFactory,
+)
 from lava.magma.compiler.subcompilers.interfaces import AbstractSubCompiler
 from lava.magma.compiler.subcompilers.py.pyproc_compiler import PyProcCompiler
 from lava.magma.compiler.utils import PortInitializer
 from lava.magma.core import resources
 from lava.magma.core.model.py.model import AbstractPyProcessModel
 from lava.magma.core.process.process import AbstractProcess
-from lava.magma.core.resources import (CPU, LMT, Loihi1NeuroCore,
-                                       Loihi2NeuroCore, NeuroCore)
+from lava.magma.core.resources import (
+    CPU,
+    LMT,
+    Loihi1NeuroCore,
+    Loihi2NeuroCore,
+    NeuroCore,
+)
 from lava.magma.core.run_configs import RunConfig, AbstractLoihiHWRunCfg
 from lava.magma.core.sync.domain import SyncDomain
 from lava.magma.core.sync.protocols.async_protocol import AsyncProtocol
@@ -132,9 +146,9 @@ class Compiler:
         """
         # Group and sort all Processes connected to 'process' into a list of
         # ProcGroups.
-        proc_group_digraph = ProcGroupDiGraphs(process,
-                                               run_cfg,
-                                               self._compile_config)
+        proc_group_digraph = ProcGroupDiGraphs(
+            process, run_cfg, self._compile_config
+        )
         proc_groups: ty.List[ProcGroup] = proc_group_digraph.get_proc_groups()
         # Get a flattened list of all AbstractProcesses
         process_list = list(itertools.chain.from_iterable(proc_groups))
@@ -142,9 +156,7 @@ class Compiler:
         proc_builders, channel_map = self._compile_proc_groups(
             proc_groups, channel_map
         )
-        _, c_builders, nc_builders = split_proc_builders_by_type(
-            proc_builders
-        )
+        _, c_builders, nc_builders = split_proc_builders_by_type(proc_builders)
 
         node_configs = self._create_node_cfgs(proc_groups)
         sync_domains, node_to_sync_domain_dict = self._create_sync_domains(
@@ -168,9 +180,9 @@ class Compiler:
         sync_channel_builders = self._create_sync_channel_builders(
             runtime_service_builders
         )
-        watchdog_manager_builder = \
-            WatchdogManagerBuilder(self._compile_config,
-                                   self.log.getEffectiveLevel())
+        watchdog_manager_builder = WatchdogManagerBuilder(
+            self._compile_config, self.log.getEffectiveLevel()
+        )
 
         # Package all Builders and NodeConfigs into an Executable.
         executable = Executable(
@@ -181,7 +193,7 @@ class Compiler:
             sync_domains,
             runtime_service_builders,
             sync_channel_builders,
-            watchdog_manager_builder
+            watchdog_manager_builder,
         )
 
         # Create VarModels.
@@ -231,8 +243,7 @@ class Compiler:
         if self._compile_config.get("cache", False):
             cache_dir = self._compile_config["cache_dir"]
             if os.path.exists(os.path.join(cache_dir, "cache")):
-                with open(os.path.join(cache_dir, "cache"), "rb") \
-                        as cache_file:
+                with open(os.path.join(cache_dir, "cache"), "rb") as cache_file:
                     cache_object = pickle.load(cache_file)  # noqa: S301 # nosec
 
                 proc_builders_values = cache_object["procname_to_proc_builder"]
@@ -243,8 +254,10 @@ class Compiler:
                     pb.proc_params = proc.proc_params
 
                 channel_map.read_from_cache(cache_object, procname_to_proc_map)
-                print(f"\nBuilders and Channel Map loaded from "
-                      f"Cache {cache_dir}\n")
+                print(
+                    f"\nBuilders and Channel Map loaded from "
+                    f"Cache {cache_dir}\n"
+                )
                 return proc_builders, channel_map
 
         # Get manual partitioning, if available
@@ -269,8 +282,7 @@ class Compiler:
             subcompilers.append(pg_subcompilers)
 
             # Compile this ProcGroup.
-            self._compile_proc_group(pg_subcompilers, channel_map,
-                                     partitioning)
+            self._compile_proc_group(pg_subcompilers, channel_map, partitioning)
 
         # Flatten the list of all SubCompilers.
         subcompilers = list(itertools.chain.from_iterable(subcompilers))
@@ -294,7 +306,7 @@ class Compiler:
                           f"Violation Name: {p.name=}"
                     raise Exception(msg)
                 procname_to_proc_builder[p.name] = pb
-                pb.proc_params = None
+
             cache_object["procname_to_proc_builder"] = procname_to_proc_builder
             channel_map.write_to_cache(cache_object, proc_to_procname_map)
             with open(os.path.join(cache_dir, "cache"), "wb") as cache_file:
@@ -370,8 +382,9 @@ class Compiler:
         c_idx = []
         nc_idx = []
         # Go through all required subcompiler classes...
-        for idx, (subcompiler_class, procs) in \
-                enumerate(compiler_type_to_procs.items()):
+        for idx, (subcompiler_class, procs) in enumerate(
+            compiler_type_to_procs.items()
+        ):
             # ...create the subcompiler instance...
             compiler = subcompiler_class(procs, self._compile_config)
             # ...and add it to the list.
@@ -391,14 +404,17 @@ class Compiler:
         # `self._map_subcompiler_type_to_procs`.
         # 1. Confirm that there is only one instance of C and Nc subcompilers
         if len(c_idx) > 1 or len(nc_idx) > 1:
-            raise AssertionError("More than one instance of C or Nc "
-                                 "subcompiler detected.")
+            raise AssertionError(
+                "More than one instance of C or Nc " "subcompiler detected."
+            )
         # 2. If the index of C subcompiler is larger (appears later in the
         # list), then swap it with Nc subcompiler.
         if len(c_idx) > 0 and len(nc_idx) > 0:
             if c_idx[0] > nc_idx[0]:
-                subcompilers[c_idx[0]], subcompilers[nc_idx[0]] = subcompilers[
-                    nc_idx[0]], subcompilers[c_idx[0]]
+                subcompilers[c_idx[0]], subcompilers[nc_idx[0]] = (
+                    subcompilers[nc_idx[0]],
+                    subcompilers[c_idx[0]],
+                )
         # We have ensured that C subcompiler appears before Nc subcompiler in
         # the list we return. As compile() is called serially on each
         # subcompiler, C Processes will be compiled before Nc Processes
@@ -407,8 +423,9 @@ class Compiler:
 
     @staticmethod
     def _compile_proc_group(
-        subcompilers: ty.List[AbstractSubCompiler], channel_map: ChannelMap,
-        partitioning: ty.Dict[str, ty.Dict]
+        subcompilers: ty.List[AbstractSubCompiler],
+        channel_map: ChannelMap,
+        partitioning: ty.Dict[str, ty.Dict],
     ) -> None:
         """For a given list of SubCompilers that have been initialized with
         the Processes of a single ProcGroup, iterate through the compilation
@@ -566,8 +583,7 @@ class Compiler:
                 self.log.debug("LOIHI_GEN: " + str(loihi_gen.upper()))
                 if loihi_gen.upper() == resources.OheoGulch.__name__.upper():
                     if resources.OheoGulch not in node_tracker:
-                        node = Node(
-                            node_type=resources.OheoGulch, processes=[])
+                        node = Node(node_type=resources.OheoGulch, processes=[])
                         self.log.debug(
                             "OheoGulch Node Added to NodeConfig: "
                             + str(node.node_type)
@@ -699,9 +715,9 @@ class Compiler:
                 sd.add_process(p)
                 proc_to_domain_map[p] = sd
 
-        node_to_sync_domain_dict: ty.Dict[
-            Node, ty.Set[SyncDomain]
-        ] = defaultdict(set)
+        node_to_sync_domain_dict: ty.Dict[Node, ty.Set[SyncDomain]] = (
+            defaultdict(set)
+        )
         for node_cfg in node_cfgs:
             for node in node_cfg:
                 log.debug("Node: " + str(node.node_type.__name__))
@@ -718,7 +734,7 @@ class Compiler:
         nc_builders: ty.Dict[AbstractProcess, NcProcessBuilder],
         c_builders: ty.Dict[AbstractProcess, CProcessBuilder],
         run_cfg: RunConfig,
-        compile_config: ty.Optional[ty.Dict[str, ty.Any]] = None
+        compile_config: ty.Optional[ty.Dict[str, ty.Any]] = None,
     ) -> ty.Tuple[
         ty.Dict[SyncDomain, RuntimeServiceBuilder], ty.Dict[int, int]
     ]:
@@ -771,12 +787,13 @@ class Compiler:
 
                 rs_kwargs = {
                     "c_builders": list(c_builders.values()),
-                    "nc_builders": list(nc_builders.values())
+                    "nc_builders": list(nc_builders.values()),
                 }
                 if isinstance(run_cfg, AbstractLoihiHWRunCfg):
                     rs_kwargs["callback_fxs"] = run_cfg.callback_fxs
-                    rs_kwargs["embedded_allocation_order"] = \
+                    rs_kwargs["embedded_allocation_order"] = (
                         run_cfg.embedded_allocation_order
+                    )
 
                 rs_builder = RuntimeServiceBuilder(
                     rs_class,
@@ -786,7 +803,7 @@ class Compiler:
                     loihi_version,
                     log.level,
                     compile_config,
-                    **rs_kwargs
+                    **rs_kwargs,
                 )
                 rs_builders[sync_domain] = rs_builder
                 for p in sync_domain.processes:
