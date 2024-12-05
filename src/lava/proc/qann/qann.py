@@ -70,10 +70,13 @@ class QANN(AbstractProcess):
         self.s_out = OutPort(shape=shape)
 
         if type(scale) == int:
+            self.per_tensor = True
             self.scale = Var(shape=(1,), init=scale)
         elif type(scale) == np.ndarray:
+            self.per_tensor = False
             self.scale = Var(shape=shape, init=scale)
         elif np.isscalar(scale) and np.issubdtype(type(scale), np.integer):
+            self.per_tensor = True
             self.scale = Var(shape=(1,), init=scale)
         else:
             raise ValueError("scale must be an int or np.ndarray")
@@ -153,7 +156,12 @@ if loihi_available:
             if np.isscalar(
                 scale
             ):  # Compile the scale into the code if its a scalar
-                ucode_file = os.path.join(curr_dir, "qann.dasm")
+                if vth > 0:
+                    ucode_file = os.path.join(curr_dir, "qann_thresh.dasm")
+                    print(f"Using qann_thresh.dasm")
+                else:
+                    ucode_file = os.path.join(curr_dir, "qann.dasm")
+                    print(f"Using qann.dasm")
                 neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
                     shape=(1,),
                     ucode=ucode_file,
@@ -170,6 +178,7 @@ if loihi_available:
             else:
                 # raise ("Channel wise scaling not implemented yet")
                 ucode_file = os.path.join(curr_dir, "qann_thresh_chan.dasm")
+                print(f"Using qann_thresh_chan.dasm")
                 neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
                     shape=(1,),
                     ucode=ucode_file,
