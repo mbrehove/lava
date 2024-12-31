@@ -159,22 +159,36 @@ if loihi_available:
                 if vth > 0:
                     ucode_file = os.path.join(curr_dir, "qann_thresh.dasm")
                     print(f"Using qann_thresh.dasm")
+                    neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                        shape=(1,),
+                        ucode=ucode_file,
+                        scale_exp=scale_exp,
+                        bias_exp=bias_exp,
+                        scale=scale,
+                        vth=vth,
+                    )
+                    neurons: Nodes = net.neurons.allocate_ucode(
+                        shape=flat_shape,
+                        sigma=self.sigma,
+                        act_ref=act_ref,
+                        bias=bias,
+                    )
                 else:
-                    ucode_file = os.path.join(curr_dir, "qann.dasm")
                     print(f"Using qann.dasm")
-                neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
-                    shape=(1,),
-                    ucode=ucode_file,
-                    scale_exp=scale_exp,
-                    bias_exp=bias_exp,
-                    scale=scale,
-                )
-                neurons: Nodes = net.neurons.allocate_ucode(
-                    shape=flat_shape,
-                    sigma=self.sigma,
-                    act_ref=act_ref,
-                    bias=bias,
-                )
+                    neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                        shape=(1,),
+                        ucode=os.path.join(curr_dir, "qann.dasm"),
+                        scale_exp=scale_exp,
+                        bias_exp=bias_exp,
+                        scale=scale,
+                    )
+                    neurons: Nodes = net.neurons.allocate_ucode(
+                        shape=flat_shape,
+                        sigma=self.sigma,
+                        act_ref=act_ref,
+                        bias=bias,
+                    )
+
             else:
                 # raise ("Channel wise scaling not implemented yet")
                 ucode_file = os.path.join(curr_dir, "qann_thresh_chan.dasm")
