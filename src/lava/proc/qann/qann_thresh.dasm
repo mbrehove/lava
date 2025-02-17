@@ -56,7 +56,7 @@ next
 :pass1
 add act_ref act         // act_ref = act - act_old + residue = delta
 abs abs_delta act_ref   // abs_delta = abs(delta)
-cmp_lt abs_delta vth
+cmp_gt vth abs_delta 
 skp_nc 2
 // if !spike: residue = delta => act_ref = delta - act
 sub act_ref act         // act_ref = delta - act
