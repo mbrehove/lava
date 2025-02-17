@@ -54,6 +54,9 @@ class QANN(AbstractProcess):
         bias_exp: ty.Optional[int] = 0,
         scale_exp: ty.Optional[int] = 0,
         threshold: ty.Optional[int] = 0,
+        interval_sub_1: ty.Optional[
+            int
+        ] = 0,  # Zero will use the .dasm version without reset
     ) -> None:
         super().__init__(
             shape=shape,
@@ -64,6 +67,7 @@ class QANN(AbstractProcess):
             bias_exp=bias_exp,
             scale_exp=scale_exp,
             threshold=threshold,
+            interval_sub_1=interval_sub_1,
         )
 
         self.a_in = InPort(shape=shape)
@@ -88,6 +92,7 @@ class QANN(AbstractProcess):
         self.bias_exp = Var(shape=(1,), init=bias_exp)
         self.scale_exp = Var(shape=(1,), init=scale_exp)
         self.threshold = Var(shape=(1,), init=threshold)
+        self.interval_sub_1 = Var(shape=(1,), init=interval_sub_1)
         # self.cum_error = Var(shape=(1,), init=cum_error)
 
     @property
@@ -134,6 +139,7 @@ if loihi_available:
         bias_exp: NcVar = LavaNcType(NcVar, np.int32, precision=3)
         scale_exp: NcVar = LavaNcType(NcVar, np.int32, precision=3)
         threshold: NcVar = LavaNcType(NcVar, np.int32, precision=3)
+        interval_sub_1: NcVar = LavaNcType(NcVar, np.int32, precision=1)
         # cum_error: NcVar = LavaNcType(NcVar, bool, precision=1)
 
         def allocate(self, net: NetL2):
@@ -153,42 +159,80 @@ if loihi_available:
             scale = coerce_to_shape(scale, shape)
             act_ref = self.residue.var.get() - self.act.var.get()
             vth = self.threshold.var.get()
+            interval_sub_1 = self.interval_sub_1.var.get()
             if np.isscalar(
                 scale
             ):  # Compile the scale into the code if its a scalar
-                if vth > 0:
-                    ucode_file = os.path.join(curr_dir, "qann_thresh.dasm")
-                    print(f"Using qann_thresh.dasm")
-                    neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
-                        shape=(1,),
-                        ucode=ucode_file,
-                        scale_exp=scale_exp,
-                        bias_exp=bias_exp,
-                        scale=scale,
-                        vth=vth,
-                    )
-                    neurons: Nodes = net.neurons.allocate_ucode(
-                        shape=flat_shape,
-                        sigma=self.sigma,
-                        act_ref=act_ref,
-                        bias=bias,
-                    )
-                else:
-                    print(f"Using qann.dasm")
-                    neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
-                        shape=(1,),
-                        ucode=os.path.join(curr_dir, "qann.dasm"),
-                        scale_exp=scale_exp,
-                        bias_exp=bias_exp,
-                        scale=scale,
-                    )
-                    neurons: Nodes = net.neurons.allocate_ucode(
-                        shape=flat_shape,
-                        sigma=self.sigma,
-                        act_ref=act_ref,
-                        bias=bias,
-                    )
-
+                if interval_sub_1 == 0:  # If No reset
+                    if vth > 0:
+                        ucode_file = os.path.join(curr_dir, "qann_thresh.dasm")
+                        print(f"Using qann_thresh.dasm")
+                        neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                            shape=(1,),
+                            ucode=ucode_file,
+                            scale_exp=scale_exp,
+                            bias_exp=bias_exp,
+                            scale=scale,
+                            vth=vth,
+                        )
+                        neurons: Nodes = net.neurons.allocate_ucode(
+                            shape=flat_shape,
+                            sigma=self.sigma,
+                            act_ref=act_ref,
+                            bias=bias,
+                        )
+                    else:
+                        print(f"Using qann.dasm")
+                        neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                            shape=(1,),
+                            ucode=os.path.join(curr_dir, "qann.dasm"),
+                            scale_exp=scale_exp,
+                            bias_exp=bias_exp,
+                            scale=scale,
+                        )
+                        neurons: Nodes = net.neurons.allocate_ucode(
+                            shape=flat_shape,
+                            sigma=self.sigma,
+                            act_ref=act_ref,
+                            bias=bias,
+                        )
+                else:  # If we are using reset
+                    if vth > 0:
+                        ucode_file = os.path.join(
+                            curr_dir, "qann_thresh_reset.dasm"
+                        )
+                        print(f"Using qann_thresh_reset.dasm")
+                        neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                            shape=(1,),
+                            ucode=ucode_file,
+                            scale_exp=scale_exp,
+                            bias_exp=bias_exp,
+                            scale=scale,
+                            vth=vth,
+                            interval_sub_1=interval_sub_1,
+                        )
+                        neurons: Nodes = net.neurons.allocate_ucode(
+                            shape=flat_shape,
+                            sigma=self.sigma,
+                            act_ref=act_ref,
+                            bias=bias,
+                        )
+                    else:
+                        print(f"Using qann_reset.dasm")
+                        neurons_cfg: Nodes = net.neurons_cfg.allocate_ucode(
+                            shape=(1,),
+                            ucode=os.path.join(curr_dir, "qann_reset.dasm"),
+                            scale_exp=scale_exp,
+                            bias_exp=bias_exp,
+                            scale=scale,
+                            interval_sub_1=interval_sub_1,
+                        )
+                        neurons: Nodes = net.neurons.allocate_ucode(
+                            shape=flat_shape,
+                            sigma=self.sigma,
+                            act_ref=act_ref,
+                            bias=bias,
+                        )
             else:
                 # raise ("Channel wise scaling not implemented yet")
                 ucode_file = os.path.join(curr_dir, "qann_thresh_chan.dasm")
